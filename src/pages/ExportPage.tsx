@@ -29,6 +29,8 @@ export default function ExportPage() {
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [uploadingExample, setUploadingExample] = useState(false);
   const [aiSections, setAiSections] = useState<Record<string, string> | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewFileName, setPreviewFileName] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -36,6 +38,12 @@ export default function ExportPage() {
       if (data) setTeamInfo({ name: data.team_name || '', season: data.season || '2024-2025', region: data.region || '' });
     });
   }, [user]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   const handleCriteriaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0] || !user) return;
@@ -244,30 +252,59 @@ export default function ExportPage() {
     return doc;
   };
 
-  const generatePdfFromSections = async (sections: Record<string, string>) => {
+  const updatePdfPreview = (pdfBlob: Blob, fileName: string) => {
+    const nextPreviewUrl = URL.createObjectURL(pdfBlob);
+
+    setPreviewUrl((currentPreviewUrl) => {
+      if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
+      return nextPreviewUrl;
+    });
+    setPreviewFileName(fileName);
+  };
+
+  const handleDownloadPreview = () => {
+    if (!previewUrl) return;
+
+    const link = document.createElement('a');
+    link.href = previewUrl;
+    link.download = previewFileName || 'document.pdf';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const saveGeneratedPdf = async (pdfBlob: Blob, fileName: string) => {
     if (!user) return;
+
+    const path = `${user.id}/${crypto.randomUUID()}_${fileName}`;
+    const { error: uploadError } = await supabase.storage.from('pdfs').upload(path, pdfBlob, { contentType: 'application/pdf' });
+    if (uploadError) throw uploadError;
+
+    const { data: urlData } = supabase.storage.from('pdfs').getPublicUrl(path);
+    const { error: insertError } = await supabase.from('exported_pdfs').insert({
+      user_id: user.id,
+      file_name: fileName,
+      file_url: urlData.publicUrl,
+    });
+
+    if (insertError) throw insertError;
+  };
+
+  const generatePdfPreview = async (sections: Record<string, string> | null) => {
+    if (!user) return;
+
+    const doc = buildPdf(sections);
+    const pdfBlob = doc.output('blob');
+    const fileName = `notebook_${teamInfo.name || 'team'}_${new Date().toISOString().slice(0, 10)}.pdf`;
+
+    updatePdfPreview(pdfBlob, fileName);
+    await saveGeneratedPdf(pdfBlob, fileName);
+    toast.success(t('export.generated_success'));
+  };
+
+  const generatePdfFromSections = async (sections: Record<string, string>) => {
     try {
-      const doc = buildPdf(sections);
-      const pdfBlob = doc.output('blob');
-      const fileName = `notebook_${teamInfo.name || 'team'}_${new Date().toISOString().slice(0, 10)}.pdf`;
-
-      // Download PDF directly instead of window.open (blocked by Chrome)
-      const downloadUrl = URL.createObjectURL(pdfBlob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(downloadUrl);
-
-      // Also save to storage
-      const path = `${user.id}/${fileName}`;
-      await supabase.storage.from('pdfs').upload(path, pdfBlob, { contentType: 'application/pdf' });
-      const { data: urlData } = supabase.storage.from('pdfs').getPublicUrl(path);
-      await supabase.from('exported_pdfs').insert({ user_id: user.id, file_name: fileName, file_url: urlData.publicUrl });
-      await supabase.from('exported_pdfs').insert({ user_id: user.id, file_name: fileName, file_url: urlData.publicUrl });
-      toast.success(t('export.generated_success'));
+      await generatePdfPreview(sections);
     } catch (err: any) {
       console.error('PDF generation error:', err);
       toast.error(err.message || 'Error generating PDF');
@@ -278,25 +315,7 @@ export default function ExportPage() {
     if (!user) return;
     setGenerating(true);
     try {
-      const doc = buildPdf(aiSections);
-      const pdfBlob = doc.output('blob');
-      const fileName = `notebook_${teamInfo.name || 'team'}_${new Date().toISOString().slice(0, 10)}.pdf`;
-
-      // Download PDF directly instead of window.open (blocked by Chrome)
-      const downloadUrl = URL.createObjectURL(pdfBlob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(downloadUrl);
-      const path = `${user.id}/${fileName}`;
-      const { error: uploadError } = await supabase.storage.from('pdfs').upload(path, pdfBlob, { contentType: 'application/pdf' });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('pdfs').getPublicUrl(path);
-      await supabase.from('exported_pdfs').insert({ user_id: user.id, file_name: fileName, file_url: urlData.publicUrl });
-      toast.success(t('export.generated_success'));
+      await generatePdfPreview(aiSections);
     } catch (err: any) {
       toast.error(err.message || 'Error generating PDF');
     } finally {
@@ -442,6 +461,30 @@ export default function ExportPage() {
               {generating ? <><Loader2 className="h-4 w-4 animate-spin" />{t('export.generating')}</> : <><Download className="h-4 w-4" />{t('export.generate')}</>}
             </Button>
           </div>
+
+          {previewUrl && (
+            <div className="mt-6 rounded-xl border bg-card p-4 shadow-card space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <h2 className="font-heading text-lg font-semibold">{t('export.preview')}</h2>
+                  <p className="break-all text-sm text-muted-foreground">{previewFileName}</p>
+                </div>
+                <Button type="button" variant="outline" className="gap-2 sm:w-auto" onClick={handleDownloadPreview}>
+                  <Download className="h-4 w-4" />
+                  {t('export.download')}
+                </Button>
+              </div>
+
+              <div className="overflow-hidden rounded-lg border bg-muted">
+                <iframe
+                  title={previewFileName || t('export.preview')}
+                  src={`${previewUrl}#toolbar=1&navpanes=0`}
+                  className="h-[70vh] w-full"
+                  loading="lazy"
+                />
+              </div>
+            </div>
+          )}
         </motion.div>
       </div>
     </AppLayout>
