@@ -248,16 +248,24 @@ export default function ExportPage() {
     if (!user) return;
     try {
       const doc = buildPdf(sections);
-      // Open in new tab
-      const blobUrl = doc.output('bloburl');
-      window.open(blobUrl.toString(), '_blank');
-
-      // Also save to storage
       const pdfBlob = doc.output('blob');
       const fileName = `notebook_${teamInfo.name || 'team'}_${new Date().toISOString().slice(0, 10)}.pdf`;
+
+      // Download PDF directly instead of window.open (blocked by Chrome)
+      const downloadUrl = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+
+      // Also save to storage
       const path = `${user.id}/${fileName}`;
       await supabase.storage.from('pdfs').upload(path, pdfBlob, { contentType: 'application/pdf' });
       const { data: urlData } = supabase.storage.from('pdfs').getPublicUrl(path);
+      await supabase.from('exported_pdfs').insert({ user_id: user.id, file_name: fileName, file_url: urlData.publicUrl });
       await supabase.from('exported_pdfs').insert({ user_id: user.id, file_name: fileName, file_url: urlData.publicUrl });
       toast.success(t('export.generated_success'));
     } catch (err: any) {
@@ -271,11 +279,18 @@ export default function ExportPage() {
     setGenerating(true);
     try {
       const doc = buildPdf(aiSections);
-      const blobUrl = doc.output('bloburl');
-      window.open(blobUrl.toString(), '_blank');
-
       const pdfBlob = doc.output('blob');
       const fileName = `notebook_${teamInfo.name || 'team'}_${new Date().toISOString().slice(0, 10)}.pdf`;
+
+      // Download PDF directly instead of window.open (blocked by Chrome)
+      const downloadUrl = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
       const path = `${user.id}/${fileName}`;
       const { error: uploadError } = await supabase.storage.from('pdfs').upload(path, pdfBlob, { contentType: 'application/pdf' });
       if (uploadError) throw uploadError;
