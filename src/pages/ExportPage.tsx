@@ -249,8 +249,16 @@ export default function ExportPage() {
     try {
       const doc = buildPdf(sections);
       // Open in new tab
-      const blobUrl = doc.output('bloburl');
-      window.open(blobUrl.toString(), '_blank');
+      // Download PDF directly instead of window.open (blocked by Chrome)
+      const pdfBlob = doc.output('blob');
+      const downloadUrl = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `notebook_${teamInfo.name || 'team'}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
 
       // Also save to storage
       const pdfBlob = doc.output('blob');
