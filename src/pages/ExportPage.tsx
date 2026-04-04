@@ -279,11 +279,18 @@ export default function ExportPage() {
     setGenerating(true);
     try {
       const doc = buildPdf(aiSections);
-      const blobUrl = doc.output('bloburl');
-      window.open(blobUrl.toString(), '_blank');
-
       const pdfBlob = doc.output('blob');
       const fileName = `notebook_${teamInfo.name || 'team'}_${new Date().toISOString().slice(0, 10)}.pdf`;
+
+      // Download PDF directly instead of window.open (blocked by Chrome)
+      const downloadUrl = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
       const path = `${user.id}/${fileName}`;
       const { error: uploadError } = await supabase.storage.from('pdfs').upload(path, pdfBlob, { contentType: 'application/pdf' });
       if (uploadError) throw uploadError;
