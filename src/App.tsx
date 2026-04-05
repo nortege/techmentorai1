@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -30,6 +30,30 @@ function ForceDarkTheme() {
     document.documentElement.classList.add('dark');
     localStorage.setItem('fll-theme', 'dark');
   }, []);
+  return null;
+}
+
+function OAuthRedirectHandler() {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (loading || !user) return;
+
+    const oauthRedirect = sessionStorage.getItem('oauth_redirect');
+    if (!oauthRedirect) return;
+
+    const currentPath = `${location.pathname}${location.search}${location.hash}`;
+    if (currentPath === oauthRedirect) {
+      sessionStorage.removeItem('oauth_redirect');
+      return;
+    }
+
+    sessionStorage.removeItem('oauth_redirect');
+    navigate(oauthRedirect, { replace: true });
+  }, [user, loading, location.pathname, location.search, location.hash, navigate]);
+
   return null;
 }
 
@@ -75,6 +99,7 @@ const App = () => (
       <ForceDarkTheme />
       <AuthProvider>
         <BrowserRouter>
+          <OAuthRedirectHandler />
           <AppRoutes />
         </BrowserRouter>
       </AuthProvider>
