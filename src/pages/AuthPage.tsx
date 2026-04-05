@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { lovable } from '@/integrations/lovable/index';
 import { Button } from '@/components/ui/button';
@@ -13,14 +13,27 @@ import { motion } from 'framer-motion';
 
 export default function AuthPage() {
   const { t } = useTranslation();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  const redirectPath = useMemo(() => {
+    const redirect = new URLSearchParams(location.search).get('redirect');
+    if (!redirect || !redirect.startsWith('/') || redirect.startsWith('//')) return '/dashboard';
+    return redirect;
+  }, [location.search]);
+
+  useEffect(() => {
+    if (user) {
+      navigate(redirectPath, { replace: true });
+    }
+  }, [user, navigate, redirectPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,12 +43,12 @@ export default function AuthPage() {
         const { error } = await signIn(email, password);
         if (error) throw error;
         toast.success(t('auth.login_success'));
-        navigate('/dashboard');
+        navigate(redirectPath, { replace: true });
       } else {
         const { error } = await signUp(email, password, displayName);
         if (error) throw error;
         toast.success(t('auth.signup_success'));
-        navigate('/dashboard');
+        navigate(redirectPath, { replace: true });
       }
     } catch (err: any) {
       toast.error(err.message || t('auth.error'));
@@ -47,8 +60,9 @@ export default function AuthPage() {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
+      const googleRedirectPath = location.search.includes('redirect=') ? redirectPath : '/profile';
       const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
+        redirect_uri: `${window.location.origin}/auth?redirect=${encodeURIComponent(googleRedirectPath)}`,
       });
 
       if (result.error) {
@@ -62,7 +76,7 @@ export default function AuthPage() {
       }
 
       toast.success(t('auth.login_success'));
-      navigate('/dashboard');
+      navigate(googleRedirectPath, { replace: true });
     } catch (err: any) {
       toast.error(err.message || t('auth.error'));
     } finally {

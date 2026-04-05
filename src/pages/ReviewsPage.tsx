@@ -35,20 +35,41 @@ export default function ReviewsPage() {
   }, []);
 
   const loadReviews = async () => {
-    const { data, count } = await supabase
-      .from('reviews')
-      .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (data) {
-      setReviews(data as Review[]);
+    setLoading(true);
+
+    const [{ data, count, error: reviewsError }, { data: ratingsData, error: ratingsError }] = await Promise.all([
+      supabase
+        .from('reviews')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(0, 999),
+      supabase
+        .from('reviews')
+        .select('rating')
+        .range(0, 999),
+    ]);
+
+    if (reviewsError) {
+      toast.error(reviewsError.message);
+      setLoading(false);
+      return;
     }
-    // Get stats
-    const { data: allData } = await supabase.from('reviews').select('rating');
-    if (allData && allData.length > 0) {
-      const avg = allData.reduce((s, r) => s + r.rating, 0) / allData.length;
-      setStats({ avg: Math.round(avg * 10) / 10, total: allData.length });
+
+    if (ratingsError) {
+      toast.error(ratingsError.message);
     }
+
+    setReviews((data ?? []) as Review[]);
+
+    const ratings = ratingsData ?? [];
+    const avg = ratings.length > 0
+      ? ratings.reduce((sum, review) => sum + review.rating, 0) / ratings.length
+      : 0;
+
+    setStats({
+      avg: Math.round(avg * 10) / 10,
+      total: count ?? ratings.length,
+    });
     setLoading(false);
   };
 
