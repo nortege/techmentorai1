@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -19,19 +19,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
-
-      // Handle OAuth redirect after page reload
-      if (event === 'SIGNED_IN' && session) {
-        const oauthRedirect = sessionStorage.getItem('oauth_redirect');
-        if (oauthRedirect) {
-          sessionStorage.removeItem('oauth_redirect');
-          window.location.replace(oauthRedirect);
-        }
-      }
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {

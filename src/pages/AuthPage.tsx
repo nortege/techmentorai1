@@ -60,16 +60,16 @@ export default function AuthPage() {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
-      const googleRedirectPath = location.search.includes('redirect=') ? redirectPath : '/profile';
+      const googleRedirectPath = redirectPath;
       sessionStorage.setItem('oauth_redirect', googleRedirectPath);
-      const result = await lovable.auth.signInWithOAuth("google", {
+
+      const result = await lovable.auth.signInWithOAuth('google', {
         redirect_uri: window.location.origin,
       });
 
       if (result.error) {
         toast.error(result.error instanceof Error ? result.error.message : t('auth.error'));
         sessionStorage.removeItem('oauth_redirect');
-        setGoogleLoading(false);
         return;
       }
 
@@ -78,9 +78,7 @@ export default function AuthPage() {
       }
 
       toast.success(t('auth.login_success'));
-      const target = sessionStorage.getItem('oauth_redirect') || googleRedirectPath;
-      sessionStorage.removeItem('oauth_redirect');
-      navigate(target, { replace: true });
+      navigate(googleRedirectPath, { replace: true });
     } catch (err: any) {
       toast.error(err.message || t('auth.error'));
       sessionStorage.removeItem('oauth_redirect');
