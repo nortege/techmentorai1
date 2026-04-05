@@ -85,6 +85,16 @@ export default function ExportPage() {
 
   const removePhoto = (idx: number) => setExportPhotos((prev) => prev.filter((_, i) => i !== idx));
 
+  const buildPdfFileName = () => {
+    const safeTeamName = (teamInfo.name || 'team')
+      .trim()
+      .replace(/\s+/g, '_')
+      .replace(/[^\p{L}\p{N}_-]+/gu, '')
+      .replace(/_+/g, '_') || 'team';
+
+    return `notebook_${safeTeamName}_${new Date().toISOString().slice(0, 10)}.pdf`;
+  };
+
   const handleExampleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0] || !user) return;
     setUploadingExample(true);
@@ -295,7 +305,7 @@ export default function ExportPage() {
 
     const doc = buildPdf(sections);
     const pdfBlob = doc.output('blob');
-    const fileName = `notebook_${teamInfo.name || 'team'}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    const fileName = buildPdfFileName();
 
     updatePdfPreview(pdfBlob, fileName);
     await saveGeneratedPdf(pdfBlob, fileName);

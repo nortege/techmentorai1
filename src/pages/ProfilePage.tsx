@@ -23,6 +23,15 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState({ display_name: '', team_name: '', season: '2024-2025', region: '' });
   const [pdfs, setPdfs] = useState<ExportedPdf[]>([]);
   const [saving, setSaving] = useState(false);
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
+
+  const getPdfStoragePath = (fileUrl: string) => {
+    const marker = '/storage/v1/object/public/pdfs/';
+    const markerIndex = fileUrl.indexOf(marker);
+    if (markerIndex === -1) return null;
+
+    return decodeURIComponent(fileUrl.slice(markerIndex + marker.length));
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -51,11 +60,45 @@ export default function ProfilePage() {
 
   const handleDeletePdf = async (pdf: ExportedPdf) => {
     if (!user) return;
-    const path = `${user.id}/${pdf.file_name}`;
-    await supabase.storage.from('pdfs').remove([path]);
+    const path = getPdfStoragePath(pdf.file_url);
+    if (path) {
+      await supabase.storage.from('pdfs').remove([path]);
+    }
     await supabase.from('exported_pdfs').delete().eq('id', pdf.id);
     setPdfs((prev) => prev.filter((p) => p.id !== pdf.id));
     toast.success(t('common.delete'));
+  };
+
+  const handleDownloadPdf = async (pdf: ExportedPdf) => {
+    setDownloadingPdfId(pdf.id);
+
+    try {
+      const storagePath = getPdfStoragePath(pdf.file_url);
+      let pdfBlob: Blob;
+
+      if (storagePath) {
+        const { data, error } = await supabase.storage.from('pdfs').download(storagePath);
+        if (error) throw error;
+        pdfBlob = data;
+      } else {
+        const response = await fetch(pdf.file_url);
+        if (!response.ok) throw new Error('Failed to download PDF');
+        pdfBlob = await response.blob();
+      }
+
+      const downloadUrl = URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = pdf.file_name || 'document.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to download PDF');
+    } finally {
+      setDownloadingPdfId(null);
+    }
   };
 
   return (
@@ -147,9 +190,9 @@ export default function ProfilePage() {
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <a href={pdf.file_url} target="_blank" rel="noopener noreferrer">
-                        <Button variant="ghost" size="sm"><Download className="h-4 w-4" /></Button>
-                      </a>
+                       <Button variant="ghost" size="sm" onClick={() => handleDownloadPdf(pdf)} disabled={downloadingPdfId === pdf.id}>
+                         {downloadingPdfId === pdf.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => handleDeletePdf(pdf)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
